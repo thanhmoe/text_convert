@@ -61,6 +61,23 @@ function convertJsonToXlsx(inputFile, outputFile) {
   }
 }
 
+function getUniqueFileName(filePath) {
+  let counter = 1;
+  let uniqueFilePath = filePath;
+
+  // Kiểm tra nếu file đã tồn tại
+  while (fs.existsSync(uniqueFilePath)) {
+    const parsedPath = path.parse(filePath);
+    uniqueFilePath = path.join(
+      parsedPath.dir,
+      `${parsedPath.name}(${counter})${parsedPath.ext}`
+    );
+    counter++;
+  }
+
+  return uniqueFilePath;
+}
+
 // Check if file arguments are provided
 if (process.argv.length < 3) {
   console.log('Usage: node json-to-xlsx.js <input-json-file> [output-xlsx-file]');
@@ -69,6 +86,9 @@ if (process.argv.length < 3) {
 
 const inputFile = process.argv[2];
 // Nếu output file không được chỉ định, lưu vào thư mục Home với tên từ input file
-const outputFile = process.argv[3] || path.join(os.homedir(), path.basename(inputFile, '.json') + '.xlsx');
+let outputFile = process.argv[3] || path.join(os.homedir(), path.basename(inputFile, '.json') + '.xlsx');
+
+// Đảm bảo tên file là duy nhất
+outputFile = getUniqueFileName(outputFile);
 
 convertJsonToXlsx(inputFile, outputFile);
