@@ -152,6 +152,14 @@ function getUniqueFileName(filePath) {
   return uniqueFilePath;
 }
 
+function getTodayFolder() {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, '0');
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const yyyy = now.getFullYear();
+  return `${dd}.${mm}.${yyyy}`;
+}
+
 // Check if file arguments are provided
 if (process.argv.length < 3) {
   console.log('Usage: node text.js <input-file> [output-file]');
@@ -164,14 +172,24 @@ let outputFile = process.argv[3];
 
 // Determine output file name and conversion type
 if (!outputFile) {
-  if (inputExt === '.json') {
-    outputFile = path.join(os.homedir(), path.basename(inputFile, '.json') + '.xlsx');
-  } else if (inputExt === '.xlsx') {
-    outputFile = path.join(os.homedir(), path.basename(inputFile, '.xlsx') + '.json');
-  } else {
+  const todayFolder = getTodayFolder();
+  const baseName =
+    inputExt === '.json'
+      ? path.basename(inputFile, '.json') + '.xlsx'
+      : inputExt === '.xlsx'
+      ? path.basename(inputFile, '.xlsx') + '.json'
+      : null;
+
+  if (!baseName) {
     console.error('Unsupported file format. Please provide a .json or .xlsx file.');
     process.exit(1);
   }
+
+  // Đường dẫn thư mục lưu file
+  const outputDir = path.join(os.homedir(), 'text_convert_output', todayFolder);
+  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+
+  outputFile = path.join(outputDir, baseName);
 }
 
 // Ensure unique file name
