@@ -26,33 +26,42 @@ function flattenObject(obj, prefix = '') {
 // Function to convert JSON to XLSX
 function convertJsonToXlsx(inputFile, outputFile) {
   try {
-    // Read the JSON file
     const jsonContent = fs.readFileSync(inputFile, 'utf8');
-
-    // Remove comments and parse JSON
     const cleanedJson = jsonContent.replace(/\/\/.*$/gm, '');
     const jsonData = JSON.parse(cleanedJson);
 
-    // Flatten the JSON structure
-    const flattenedData = flattenObject(jsonData);
+    // Flatten the JSON structure, giữ cả key có value là object rỗng
+    function flatten(obj, prefix = '') {
+      return Object.keys(obj).reduce((acc, key) => {
+        const prefixedKey = prefix ? `${prefix}.${key}` : key;
+        if (typeof obj[key] === 'object' && obj[key] !== null && !Array.isArray(obj[key])) {
+          // Nếu là object rỗng thì vẫn ghi ra
+          if (Object.keys(obj[key]).length === 0) {
+            acc[prefixedKey] = '';
+          } else {
+            Object.assign(acc, flatten(obj[key], prefixedKey));
+          }
+        } else {
+          let value = obj[key];
+          if (typeof value === 'string') value = value.replace(/\n/g, '\\n');
+          acc[prefixedKey] = value === undefined ? '' : value;
+        }
+        return acc;
+      }, {});
+    }
 
-    // Prepare data for XLSX
-    const rows = Object.entries(flattenedData).map(([key, value]) => ({ Key: key, Value: value }));
+    const flattenedData = flatten(jsonData);
+    const rows = Object.entries(flattenedData).map(([key, value]) => ({ key, value }));
 
-    // Create a new workbook and worksheet
     const workbook = xlsx.utils.book_new();
     const worksheet = xlsx.utils.json_to_sheet(rows);
 
-    // Set column widths
     worksheet['!cols'] = [
-      { wch: 50 }, // Width for 'Key' column
-      { wch: 50 }  // Width for 'Value' column
+      { wch: 50 }, // Key
+      { wch: 50 }  // Value
     ];
 
-    // Append the worksheet to the workbook
     xlsx.utils.book_append_sheet(workbook, worksheet, 'Sheet1');
-
-    // Write the XLSX file
     xlsx.writeFile(workbook, outputFile);
 
     console.log(`Successfully converted ${inputFile} to ${outputFile}`);
@@ -84,38 +93,42 @@ function convertXlsxToJson(inputFile, outputFile) {
 
 function convertXlsxToJsonWithStructure(inputFile, outputFile) {
   try {
-    // Read the XLSX file
     const workbook = xlsx.readFile(inputFile);
-
-    // Get the first sheet
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
+    const rawData = xlsx.utils.sheet_to_json(worksheet, { defval: '' }); // giá trị mặc định là rỗng
 
-    // Convert sheet to JSON (raw data)
-    const rawData = xlsx.utils.sheet_to_json(worksheet, { defval: null });
+    if (rawData.length === 0) throw new Error('No data found in the Excel file');
 
-    // Transform raw data into the desired JSON structure
+    // Tìm tên cột key và value không phân biệt hoa thường
+    const firstRow = rawData[0];
+    const columnNames = Object.keys(firstRow);
+    const keyCol = columnNames.find(col => col.toLowerCase() === 'key');
+    const valueCol = columnNames.find(col => col.toLowerCase() === 'value');
+    if (!keyCol || !valueCol) throw new Error('Excel file must contain columns named "key" and "value" (case-insensitive)');
+
     const structuredData = rawData.reduce((acc, row) => {
-      const keys = row.Key.split('.'); // Split nested keys by '.'
+      const keyPath = String(row[keyCol] || '').trim();
+      if (!keyPath) {
+        // Nếu không có key, lưu vào mảng đặc biệt
+        if (!acc._no_key) acc._no_key = [];
+        acc._no_key.push(row[valueCol] === undefined ? '' : row[valueCol]);
+        return acc;
+      }
+      const keys = keyPath.split('.');
       let current = acc;
-
-      keys.forEach((key, index) => {
-        if (index === keys.length - 1) {
-          // If it's the last key, assign the value
-          current[key] = row.Value;
+      keys.forEach((key, idx) => {
+        if (idx === keys.length - 1) {
+          current[key] = row[valueCol] === undefined ? '' : row[valueCol];
         } else {
-          // If it's not the last key, ensure the object exists
           current[key] = current[key] || {};
           current = current[key];
         }
       });
-
       return acc;
     }, {});
 
-    // Write structured JSON data to file
     fs.writeFileSync(outputFile, JSON.stringify(structuredData, null, 2), 'utf8');
-
     console.log(`Successfully converted ${inputFile} to ${outputFile}`);
   } catch (error) {
     console.error('Error converting XLSX to JSON:', error.message);
